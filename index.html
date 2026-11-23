@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>郵票代購進度</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 簡潔、可信、像一張寄件追蹤單
+   IDEA: 郵票齒孔邊的追蹤卡
+   PICTURE: 每批一條四段進度軌
+   COLOUR and TYPE: 松綠 + 燙金點綴，Noto Sans TC
+   LAYOUT: 單欄，查詢在上，各批進度在下 */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f6f3,#0e1612);--card:light-dark(#fff,#16211b);
+--ink:light-dark(#14201a,#e8efe9);--mute:light-dark(#5d6b63,#9aaba1);
+--pine:light-dark(#1f5a3d,#5fbf8c);--gold:light-dark(#b88a1e,#e0b64a);
+--line:light-dark(#dde3de,#2a3830)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Noto Sans TC",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:640px;margin:0 auto;padding:clamp(24px,5vw,48px) 16px 48px}
+h1{font-size:clamp(26px,6vw,34px);line-height:1.15;margin:0 0 20px;text-wrap:balance}
+.sub{color:var(--mute);margin:0 0 24px;font-size:15px}
+.card{background:var(--card);border-radius:14px;padding:20px;margin-bottom:16px;
+  border:1px solid var(--line);position:relative}
+.stamp{border:1.5px dashed var(--pine);padding:22px}
+form{display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1 1 220px;font:16px inherit;font-family:inherit;padding:12px 14px;min-height:46px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+input:focus,button:focus-visible{outline:2px solid var(--pine);outline-offset:2px}
+button{font:500 16px inherit;font-family:inherit;min-height:46px;padding:0 20px;border-radius:10px;border:0;
+  background:var(--pine);color:#fff;cursor:pointer}
+.hint{font-size:13px;color:var(--mute);margin:8px 0 0}
+#res{margin-top:16px}#res:empty{display:none}
+.found{border-top:1px dashed var(--line);padding-top:14px}
+.found b{color:var(--pine)}
+.err{color:#c0392b}
+h2{font-size:18px;margin:0;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline}
+h2 small{font-size:13px;font-weight:400;color:var(--mute)}
+.track{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));margin-top:18px;position:relative}
+.step{text-align:center;font-size:13px;color:var(--mute);position:relative}
+.step i{display:block;width:22px;height:22px;border-radius:50%;margin:0 auto 6px;border:2px solid var(--line);background:var(--card);position:relative;z-index:1}
+.step::before{content:"";position:absolute;top:10px;left:-50%;width:100%;height:2px;background:var(--line)}
+.step:first-child::before{display:none}
+.step.done{color:var(--ink);font-weight:500}
+.step.done i{background:var(--pine);border-color:var(--pine)}
+.step.done::before{background:var(--pine)}
+.step.now i{box-shadow:0 0 0 4px color-mix(in srgb,var(--gold) 35%,transparent);border-color:var(--gold);background:var(--gold)}
+.step time{display:block;font-size:12px;font-weight:400;color:var(--mute)}
+.note{margin:14px 0 0;font-size:14px;color:var(--mute)}
+.hl{outline:2px solid var(--gold);outline-offset:3px}
+br.m{display:none}
+@media(max-width:600px){br.m{display:inline}.step{font-size:12px}}
+footer{font-size:13px;color:var(--mute);text-align:center;margin-top:24px}
+@media(prefers-reduced-motion:no-preference){.hl{transition:outline-color .3s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>奧地利郵票進度</h1>
+
+  <div class="card stamp">
+    <form id="q">
+      <input id="no" placeholder="輸入賣貨便訂單編號" autocomplete="off" aria-label="訂單編號">
+      <button type="submit">查詢</button>
+    </form>
+    <p class="hint">可輸入完整編號或末 6 碼。</p>
+    <div id="res" aria-live="polite"></div>
+  </div>
+
+  <div id="batches"></div>
+
+  <footer id="upd"></footer>
+</div>
+
+<script>
+{
+/* ===== 只需改這裡 ===== */
+const UPDATED = "2026/11/23 08:36";
+const STEPS = ["下單賣貨便","已訂購","奧地利郵政出貨","已抵台","已寄出"];
+const LABELS = ["下單<br class=m>賣貨便","已訂購","奧地利郵政<br class=m>出貨","已抵台","已寄出"];
+const BATCHES = [
+  { id:1, title:"第 1 批", cutoff:"截至 11/23 07:30 下單賣貨便", stage:2,           // stage = 已完成到第幾步（1~5）
+    dates:["","11/23 07:30","","",""],
+    note:"已向奧地利郵政線上商店訂購，等待出貨。",
+    orders:{"CM2611234364391":[1,1],"CM2611234364256":[6,0],"CM2611234363707":[1,0],"CM2611234363396":[0,1],"CM2611234363110":[1,1],"CM2611234359178":[1,1],"CM2611234358498":[1,0],"CM2611234357991":[2,0],"CM2611234357823":[1,0],"CM2611234357665":[1,0],"CM2611234357091":[1,0],"CM2611234356622":[1,1],"CM2611234356405":[1,0],"CM2611234356108":[1,0],"CM2611234356033":[1,0],"CM2611234353949":[1,0],"CM2611234353664":[1,1],"CM2611234353154":[2,0],"CM2611234352937":[6,0],"CM2611234352691":[1,0],"CM2611234352518":[1,1],"CM2611234352470":[3,1],"CM2611234352132":[1,0],"CM2611234352096":[1,0],"CM2611234349792":[1,0]} },
+  { id:2, title:"第 2 批", cutoff:"11/23 07:30 之後下單賣貨便", stage:1,
+    dates:["","","","",""],
+    note:"",
+    orders:{"CM2611234368521":[1,1],"CM2611234368178":[1,0],"CM2611234367862":[1,0],"CM2611234366082":[1,1],"CM2611234365598":[0,1],"CM2611234365019":[1,0],"CM2611234368843":[2,2]} }
+];
+/* ===================== */
+
+const $ = s => document.querySelector(s);
+const qty = o => { let u=0,s=0; for (const k in o){u+=o[k][0];s+=o[k][1]} return [u,s] };
+const track = b => STEPS.map((t,i)=>{
+  const c = i < b.stage ? (i===b.stage-1 ? "step done now" : "step done") : "step";
+  return `<div class="${c}"><i></i>${LABELS[i]}<time>${b.dates[i]||""}</time></div>`;
+}).join("");
+
+const card = b => `<section class="card" id="b${b.id}">
+    <h2>${b.title}${b.cutoff?`<small>${b.cutoff}</small>`:""}</h2>
+    <div class="track">${track(b)}</div>
+    ${b.note?`<p class="note">${b.note}</p>`:""}
+  </section>`;
+$("#upd").textContent = "最後更新：" + UPDATED;
+
+$("#q").addEventListener("submit", e=>{
+  e.preventDefault();
+  const v = $("#no").value.trim().toUpperCase().replace(/\s/g,"");
+  const r = $("#res");
+  $("#batches").innerHTML = "";
+  if (v.length < 6){ r.innerHTML = `<p class="err found">請輸入至少 6 碼。</p>`; return; }
+  for (const b of BATCHES){
+    const k = Object.keys(b.orders).find(k => k === v || k.endsWith(v));
+    if (k){
+      const [u,s] = b.orders[k];
+      const NAME = "Block Christmas Tree";
+      const items = [u?`【Unstamped 無郵戳】${NAME} × ${u} 枚`:"", s?`【Stamped 已蓋郵戳】${NAME} × ${s} 枚`:""].filter(Boolean).join("<br>");
+      r.innerHTML = `<div class="found">訂單 ${k}<br>屬於 <b>${b.title}</b>，目前狀態：<b>${STEPS[b.stage-1]}</b><br><p class="hint" style="margin-top:10px">品項：<br>${items}</p></div>`;
+      $("#batches").innerHTML = card(b);
+      return;
+    }
+  }
+  r.innerHTML = `<p class="err found">查無此訂單。11/23 07:30 之後下單的訂單屬於第 2 批，名單更新後即可查詢。</p>`;
+});
+}
+</script>
+</body>
+</html>
